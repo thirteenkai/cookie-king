@@ -1,0 +1,13 @@
+# Local dependencies
+node_modules/
+
+# Wrangler local state/cache
+.wrangler/
+
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log

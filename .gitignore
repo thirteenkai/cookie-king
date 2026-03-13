@@ -1,0 +1,20 @@
+# macOS / editor
+.DS_Store
+*.log
+
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# Worker local artifacts
+worker/node_modules/
+worker/.wrangler/
+worker/.git/
+
+# Local package artifacts
+CookieKing-Extension.zip
+releases/*.zip
+
+# Keep extension source private in public repo
+extension/
