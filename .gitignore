@@ -18,3 +18,9 @@ releases/*.zip
 
 # Keep extension source private in public repo
 extension/
+extension
+
+# Keep personal docs private
+docs/**
+!docs/chrome-store/
+!docs/chrome-store/privacy-policy-cn.md
