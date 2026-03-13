@@ -63,7 +63,7 @@ npm test
 npm run deploy
 ```
 
-更完整的部署说明见 [README.md](/Users/macbookpro/dev/Projects/cookie-king/worker/README.md)。
+更完整的部署说明见 [README.md](worker/README.md)。
 
 ## 使用流程
 
