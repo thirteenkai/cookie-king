@@ -115,12 +115,6 @@ async function run() {
     assert.equal(payload.version, 'v3');
   }
 
-  // strict V3: v2 disabled
-  {
-    const res = await call(env, '/api/v2/channels/ch-1/sites/qq.com', 'PUT', createEnvelope('qq.com'));
-    assert.equal(res.status, 410);
-  }
-
   const ownerA = await bootstrapOwner(env);
   const ownerB = await bootstrapOwner(env);
 

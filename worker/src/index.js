@@ -141,18 +141,6 @@ async function parseJsonBody(request, maxBytes = Infinity) {
 }
 
 // ----------------------
-// V2 key helpers
-// ----------------------
-
-function v2SiteKey(channelId, siteId) {
-  return `v2:channels:${channelId}:sites:${siteId}`;
-}
-
-function v2ChannelIndexKey(channelId) {
-  return `v2:channels:${channelId}:index`;
-}
-
-// ----------------------
 // V3 key helpers
 // ----------------------
 
@@ -370,23 +358,15 @@ async function parseAndValidateEnvelope(request, siteId) {
   return { payload: parsed.value };
 }
 
-function normalizeSiteMeta(siteId, meta, includeChannel = false) {
-  const base = {
+function normalizeSiteMeta(siteId, meta) {
+  return {
     siteId,
+    channelId: meta?.channelId || '',
     updatedAt: meta?.updatedAt || null,
     strategy: meta?.strategy || 'UNKNOWN',
     riskLevel: meta?.riskLevel || 'UNKNOWN',
     supportLevel: meta?.supportLevel || 'UNKNOWN'
   };
-
-  if (includeChannel) {
-    return {
-      ...base,
-      channelId: meta?.channelId || ''
-    };
-  }
-
-  return base;
 }
 
 function sortByUpdatedAtDesc(a, b) {
@@ -395,10 +375,6 @@ function sortByUpdatedAtDesc(a, b) {
   if (!b.updatedAt) return -1;
   return b.updatedAt.localeCompare(a.updatedAt);
 }
-
-// ----------------------
-// V2 compatibility helpers
-// ----------------------
 
 function validateEnvelope(payload, pathSiteId) {
   if (!payload || typeof payload !== 'object') return 'Body must be a JSON object';
@@ -422,42 +398,6 @@ function validateEnvelope(payload, pathSiteId) {
   if (typeof metadata.capturedAt !== 'string' || !metadata.capturedAt) return 'metadata.capturedAt is required';
 
   return null;
-}
-
-async function readV2ChannelIndex(env, channelId) {
-  const data = await env.COOKIE_STORE.get(v2ChannelIndexKey(channelId), 'json');
-  if (!data || typeof data !== 'object') return {};
-  return data;
-}
-
-async function writeV2ChannelIndex(env, channelId, indexData) {
-  if (!indexData || Object.keys(indexData).length === 0) {
-    await env.COOKIE_STORE.delete(v2ChannelIndexKey(channelId));
-    return;
-  }
-
-  await env.COOKIE_STORE.put(
-    v2ChannelIndexKey(channelId),
-    JSON.stringify(indexData),
-    { expirationTtl: TTL_SECONDS }
-  );
-}
-
-async function compactV2ChannelIndex(env, channelId, indexData) {
-  const entries = Object.entries(indexData || {});
-  if (entries.length === 0) return {};
-
-  const compacted = {};
-  for (const [siteId, meta] of entries) {
-    const snapshot = await env.COOKIE_STORE.get(v2SiteKey(channelId, siteId));
-    if (snapshot !== null) compacted[siteId] = meta;
-  }
-
-  if (Object.keys(compacted).length !== entries.length) {
-    await writeV2ChannelIndex(env, channelId, compacted);
-  }
-
-  return compacted;
 }
 
 // ----------------------
@@ -574,7 +514,7 @@ export default {
       const active = await compactV3OwnerActiveIndex(env, auth.ownerId, rawActive);
 
       const sites = Object.entries(active)
-        .map(([siteId, meta]) => normalizeSiteMeta(siteId, meta, true))
+        .map(([siteId, meta]) => normalizeSiteMeta(siteId, meta))
         .sort(sortByUpdatedAtDesc);
 
       logEvent('owner.sites.list', {
@@ -843,113 +783,6 @@ export default {
         channelId,
         deletedSiteCount: siteIds.length
       });
-
-      return json({ success: true, channelId, deletedSiteCount: siteIds.length });
-    }
-
-    // -------- V2 (disabled in strict V3 mode) --------
-
-    if (path.startsWith('/api/v2/')) {
-      return error(410, 'V2 API disabled. Please upgrade to V3.');
-    }
-
-    const v2ListMatch = path.match(/^\/api\/v2\/channels\/([a-z0-9-]+)\/sites$/);
-    if (v2ListMatch && request.method === 'GET') {
-      const channelId = v2ListMatch[1];
-      if (!isValidChannelId(channelId)) return error(400, 'Invalid channelId');
-
-      const rawIndex = await readV2ChannelIndex(env, channelId);
-      const index = await compactV2ChannelIndex(env, channelId, rawIndex);
-      const sites = Object.entries(index)
-        .map(([siteId, meta]) => normalizeSiteMeta(siteId, meta, false))
-        .sort(sortByUpdatedAtDesc);
-
-      return json({ channelId, sites });
-    }
-
-    const v2SiteMatch = path.match(/^\/api\/v2\/channels\/([a-z0-9-]+)\/sites\/([a-z0-9.-]+)$/);
-    if (v2SiteMatch) {
-      const channelId = v2SiteMatch[1];
-      const siteId = v2SiteMatch[2];
-
-      if (!isValidChannelId(channelId)) return error(400, 'Invalid channelId');
-      if (!isValidSiteId(siteId)) return error(400, 'Invalid siteId');
-
-      if (request.method === 'PUT') {
-        const parsed = await parseAndValidateEnvelope(request, siteId);
-        if (parsed.error) return parsed.error;
-
-        const body = parsed.payload;
-        const updatedAt = new Date().toISOString();
-        const payload = {
-          envelopeVersion: body.envelopeVersion,
-          alg: body.alg,
-          kdf: body.kdf,
-          iv: body.iv,
-          ciphertext: body.ciphertext,
-          metadata: {
-            ...body.metadata,
-            siteId
-          },
-          updatedAt
-        };
-
-        await env.COOKIE_STORE.put(v2SiteKey(channelId, siteId), JSON.stringify(payload), {
-          expirationTtl: TTL_SECONDS
-        });
-
-        const index = await readV2ChannelIndex(env, channelId);
-        index[siteId] = {
-          updatedAt,
-          strategy: payload.metadata.strategy || 'UNKNOWN',
-          riskLevel: payload.metadata.riskLevel || 'UNKNOWN',
-          supportLevel: payload.metadata.supportLevel || 'UNKNOWN'
-        };
-        await writeV2ChannelIndex(env, channelId, index);
-
-        return json({
-          channelId,
-          siteId,
-          updatedAt,
-          riskLevel: index[siteId].riskLevel,
-          strategy: index[siteId].strategy,
-          supportLevel: index[siteId].supportLevel
-        });
-      }
-
-      if (request.method === 'GET') {
-        const data = await env.COOKIE_STORE.get(v2SiteKey(channelId, siteId), 'json');
-        if (!data) return error(404, 'Snapshot not found or expired');
-
-        return json({ channelId, siteId, ...data });
-      }
-
-      if (request.method === 'DELETE') {
-        await env.COOKIE_STORE.delete(v2SiteKey(channelId, siteId));
-
-        const index = await readV2ChannelIndex(env, channelId);
-        if (index[siteId]) {
-          delete index[siteId];
-          await writeV2ChannelIndex(env, channelId, index);
-        }
-
-        return json({ success: true, channelId, siteId });
-      }
-
-      return error(405, 'Method not allowed');
-    }
-
-    const v2ChannelMatch = path.match(/^\/api\/v2\/channels\/([a-z0-9-]+)$/);
-    if (v2ChannelMatch && request.method === 'DELETE') {
-      const channelId = v2ChannelMatch[1];
-      if (!isValidChannelId(channelId)) return error(400, 'Invalid channelId');
-
-      const rawIndex = await readV2ChannelIndex(env, channelId);
-      const index = await compactV2ChannelIndex(env, channelId, rawIndex);
-      const siteIds = Object.keys(index);
-
-      await Promise.all(siteIds.map((siteId) => env.COOKIE_STORE.delete(v2SiteKey(channelId, siteId))));
-      await env.COOKIE_STORE.delete(v2ChannelIndexKey(channelId));
 
       return json({ success: true, channelId, deletedSiteCount: siteIds.length });
     }
