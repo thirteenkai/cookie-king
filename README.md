@@ -1,9 +1,9 @@
 # Cookie King
 
-在你授权的设备之间，快速迁移网站登录状态（Cookie + Storage）。  
-Migrate website login sessions across your authorized devices (Cookie + Storage).
+在你授权的设备之间，快速迁移网站登录状态（Cookie，可选 Storage）。  
+Migrate website login sessions across your authorized devices (Cookie, optional Storage).
 
-[![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-%E5%AE%A1%E6%A0%B8%E4%B8%AD-1a73e8?logo=googlechrome&logoColor=white)](#chrome-web-store)
+[![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-0.1.0-1a73e8?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/cookie-king/cmiimifgcfadhmmhbombapaoohjnlmca)
 [![Deploy Backend](https://img.shields.io/badge/Backend-Cloudflare%20Worker-f38020?logo=cloudflare&logoColor=white)](worker/README.md)
 [![Privacy Policy](https://img.shields.io/badge/Privacy-Policy-2e7d32)](docs/chrome-store/privacy-policy-cn.md)
 
@@ -19,7 +19,9 @@ Migrate website login sessions across your authorized devices (Cookie + Storage)
 
 ## Chrome Web Store
 
-The extension is currently under review. The official store URL will be added here after approval.
+Official listing: [Cookie King](https://chromewebstore.google.com/detail/cookie-king/cmiimifgcfadhmmhbombapaoohjnlmca)
+
+Current store version: `0.1.0`; local pending update: `0.1.1`.
 
 ## Repository Scope
 

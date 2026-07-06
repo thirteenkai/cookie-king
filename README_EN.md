@@ -2,7 +2,7 @@
 
 Cookie King helps you move an already-authenticated website session from one authorized browser/device to another, so you can avoid repeated login and verification steps.
 
-[![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-Under%20Review-1a73e8?logo=googlechrome&logoColor=white)](#get-it)
+[![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-0.1.0-1a73e8?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/cookie-king/cmiimifgcfadhmmhbombapaoohjnlmca)
 [![Deploy Backend](https://img.shields.io/badge/Backend-Cloudflare%20Worker-f38020?logo=cloudflare&logoColor=white)](worker/README.md)
 [![Privacy Policy](https://img.shields.io/badge/Privacy-Policy-2e7d32)](docs/chrome-store/privacy-policy-cn.md)
 
@@ -17,21 +17,28 @@ Cookie King helps you move an already-authenticated website session from one aut
 ## Why It Works
 
 - Faster setup: migrate usable session state instead of repeating login flow.
-- More reliable restore: synchronizes both Cookie and site storage snapshots.
+- More controlled restore: choose Cookie-only or Cookie + site storage per site.
 - Self-hosted backend: encrypted ciphertext is stored on your own Worker backend.
 
 ## How It Works
 
-1. Capture site Cookie and Storage from an authenticated page.
+1. Capture site Cookie from an authenticated page, with optional Storage.
 2. Encrypt snapshot locally in the browser.
 3. Upload encrypted snapshot to your Worker backend.
 4. Pull snapshot with a share code on another authorized device and restore.
 
 The backend stores ciphertext, not plaintext cookie values.
 
+## Sync Scope
+
+- `Cookie`: copies only Cookie session data for more conservative cross-device use.
+- `Cookie+Storage`: copies Cookie, localStorage, and sessionStorage for a higher restore success rate. This remains the default mode.
+
 ## Get It
 
-The Chrome Web Store listing is currently under review. The official store URL will be added after approval.
+Official Chrome Web Store listing: [Cookie King](https://chromewebstore.google.com/detail/cookie-king/cmiimifgcfadhmmhbombapaoohjnlmca)
+
+Current store version: `0.1.0`; local pending update: `0.1.1`.
 
 ## Backend Deployment
 

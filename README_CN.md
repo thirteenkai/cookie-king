@@ -2,7 +2,7 @@
 
 把已经登录好的网站会话，从一个你授权的浏览器或设备，快速迁移到另一个你授权的浏览器或设备。少一次扫码，少一次短信验证，少一次从头整理环境。
 
-[![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-%E5%AE%A1%E6%A0%B8%E4%B8%AD-1a73e8?logo=googlechrome&logoColor=white)](#获取方式)
+[![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-0.1.0-1a73e8?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/cookie-king/cmiimifgcfadhmmhbombapaoohjnlmca)
 [![Deploy Backend](https://img.shields.io/badge/Backend-Cloudflare%20Worker-f38020?logo=cloudflare&logoColor=white)](worker/README.md)
 [![Privacy Policy](https://img.shields.io/badge/Privacy-Policy-2e7d32)](docs/chrome-store/privacy-policy-cn.md)
 
@@ -17,7 +17,7 @@
 ## 为什么值得用
 
 - 省时间：把已经可用的登录状态直接迁移过去，而不是重新闯一遍登录流程。
-- 更稳：同时处理 Cookie 与站点存储数据，减少“看起来登录了但其实没进”的情况。
+- 更稳：可按站点选择只同步 Cookie，或同步 Cookie 与站点存储数据。
 - 可控：后端由你自己部署，云端保存的是加密密文，不依赖公共共享服务器。
 
 ## 适合的场景
@@ -28,15 +28,22 @@
 
 ## 它怎么工作
 
-1. 在已登录页面采集当前站点的 Cookie 与 Storage。
+1. 在已登录页面采集当前站点的 Cookie，并按同步范围决定是否采集 Storage。
 2. 在浏览器本地完成加密，再上传到你自己的 Worker 后端。
 3. 另一端通过共享码拉取密文快照并恢复登录状态。
 
 云端看到的是密文，不是明文 Cookie。
 
+## 同步范围
+
+- `Cookie`：只迁移 Cookie 登录态，适合跨地区家人共享等更保守的场景。
+- `Cookie+Storage`：同步 Cookie、localStorage、sessionStorage，成功率通常更高，仍是默认模式。
+
 ## 获取方式
 
-Chrome 应用商店版本正在审核中。审核通过后，这里会更新正式商店链接。
+Chrome 应用商店正式地址：[Cookie King](https://chromewebstore.google.com/detail/cookie-king/cmiimifgcfadhmmhbombapaoohjnlmca)
+
+当前商店版本：`0.1.0`；本地待发布更新：`0.1.1`。
 
 ## 后端部署
 
