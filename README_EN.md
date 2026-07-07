@@ -2,7 +2,7 @@
 
 Cookie King helps you move an already-authenticated website session from one authorized browser/device to another, so you can avoid repeated login and verification steps.
 
-[![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-0.1.0-1a73e8?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/cookie-king/cmiimifgcfadhmmhbombapaoohjnlmca)
+[![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-Available-1a73e8?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/cookie-king/cmiimifgcfadhmmhbombapaoohjnlmca)
 [![Deploy Backend](https://img.shields.io/badge/Backend-Cloudflare%20Worker-f38020?logo=cloudflare&logoColor=white)](worker/README.md)
 [![Privacy Policy](https://img.shields.io/badge/Privacy-Policy-2e7d32)](docs/chrome-store/privacy-policy-cn.md)
 
@@ -29,6 +29,16 @@ Cookie King helps you move an already-authenticated website session from one aut
 
 The backend stores ciphertext, not plaintext cookie values.
 
+## Extension UI
+
+- The default screen is **Quick Login**. Paste your Worker server URL and a full `ck3` share code, then click **One-click login** on the target website.
+- Click the Cookie King logo in the top-left corner to open **Management**.
+- In **Management > Push**, set your Worker server URL, click **Generate** to create a share code, choose the sync scope, then click **One-click push**.
+- In **Management > Pushed**, review pushed site records, copy a share code, delete a single site record, clear all cloud records for the current share code, or configure auto push.
+- In **Received**, review received site records and configure auto pull.
+- The GitHub icon beside the server field opens this project page, including the backend deployment guide.
+- Hover or keyboard-focus icon buttons to see what each hidden action does.
+
 ## Sync Scope
 
 - `Cookie`: copies only Cookie session data for more conservative cross-device use.
@@ -37,8 +47,6 @@ The backend stores ciphertext, not plaintext cookie values.
 ## Get It
 
 Official Chrome Web Store listing: [Cookie King](https://chromewebstore.google.com/detail/cookie-king/cmiimifgcfadhmmhbombapaoohjnlmca)
-
-Current store version: `0.1.0`; local pending update: `0.1.1`.
 
 ## Backend Deployment
 

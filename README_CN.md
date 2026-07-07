@@ -2,7 +2,7 @@
 
 把已经登录好的网站会话，从一个你授权的浏览器或设备，快速迁移到另一个你授权的浏览器或设备。少一次扫码，少一次短信验证，少一次从头整理环境。
 
-[![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-0.1.0-1a73e8?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/cookie-king/cmiimifgcfadhmmhbombapaoohjnlmca)
+[![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-Available-1a73e8?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/cookie-king/cmiimifgcfadhmmhbombapaoohjnlmca)
 [![Deploy Backend](https://img.shields.io/badge/Backend-Cloudflare%20Worker-f38020?logo=cloudflare&logoColor=white)](worker/README.md)
 [![Privacy Policy](https://img.shields.io/badge/Privacy-Policy-2e7d32)](docs/chrome-store/privacy-policy-cn.md)
 
@@ -34,6 +34,16 @@
 
 云端看到的是密文，不是明文 Cookie。
 
+## 插件交互说明
+
+- 默认打开的是 **快速登录** 页。在目标网站页面填写 Worker 服务器地址和完整 `ck3` 共享码，然后点击 **一键登录**。
+- 点击左上角 Cookie King Logo 可进入 **Management / 管理端**。
+- 在 **Management > Push / 推送设置** 中填写 Worker 服务器地址，点击 **随机生成** 创建共享码，选择同步范围后点击 **一键推送**。
+- 在 **Management > Pushed / 推送记录** 中可以查看已推送站点、复制共享码、删除单站点云端记录、清空当前共享码全部云端记录，或设置自动推送。
+- 在 **Received / 接收记录** 中可以查看已接收站点，并设置自动拉取。
+- 服务器字段旁边的 GitHub 图标会打开项目主页，项目主页内包含后端部署说明。
+- 鼠标悬停或键盘聚焦图标按钮时，会显示该按钮的作用提示。
+
 ## 同步范围
 
 - `Cookie`：只迁移 Cookie 登录态，适合跨地区家人共享等更保守的场景。
@@ -42,8 +52,6 @@
 ## 获取方式
 
 Chrome 应用商店正式地址：[Cookie King](https://chromewebstore.google.com/detail/cookie-king/cmiimifgcfadhmmhbombapaoohjnlmca)
-
-当前商店版本：`0.1.0`；本地待发布更新：`0.1.1`。
 
 ## 后端部署
 
