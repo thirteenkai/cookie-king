@@ -8,6 +8,10 @@
 
 > 只适用于你有权限使用的账号与设备。不要把它用于未授权账号、公开共享或绕过目标网站安全策略。
 
+## 产品预览
+
+![Cookie King 产品预览](docs/chrome-store/assets/store-assets-v2/generated/store-screenshot-01-receiver.png)
+
 ## 它解决什么问题
 
 - 新电脑、备用浏览器、临时环境接手工作时，不想重新登录一遍所有网站。

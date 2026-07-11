@@ -7,6 +7,8 @@ Migrate website login sessions across your authorized devices (Cookie, optional 
 [![Deploy Backend](https://img.shields.io/badge/Backend-Cloudflare%20Worker-f38020?logo=cloudflare&logoColor=white)](worker/README.md)
 [![Privacy Policy](https://img.shields.io/badge/Privacy-Policy-2e7d32)](docs/chrome-store/privacy-policy-cn.md)
 
+![Cookie King product preview](docs/chrome-store/assets/store-assets-v2/generated/store-screenshot-01-receiver.png)
+
 ## Language
 
 - 中文文档: [README_CN.md](README_CN.md)

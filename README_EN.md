@@ -6,6 +6,10 @@ Cookie King helps you move an already-authenticated website session from one aut
 [![Deploy Backend](https://img.shields.io/badge/Backend-Cloudflare%20Worker-f38020?logo=cloudflare&logoColor=white)](worker/README.md)
 [![Privacy Policy](https://img.shields.io/badge/Privacy-Policy-2e7d32)](docs/chrome-store/privacy-policy-cn.md)
 
+## Product preview
+
+![Cookie King product preview](docs/chrome-store/assets/store-assets-v2/generated/store-screenshot-01-receiver.png)
+
 > Use only on accounts and devices you are authorized to access.
 
 ## What It Solves
