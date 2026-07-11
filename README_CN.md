@@ -10,7 +10,7 @@
 
 ## 产品预览
 
-![Cookie King 产品预览](docs/chrome-store/assets/store-assets-v2/generated/store-screenshot-01-receiver.png)
+![Cookie King 产品预览](docs/github-assets/github-hero-zh.png)
 
 ## 它解决什么问题
 

@@ -8,7 +8,7 @@ Cookie King helps you move an already-authenticated website session from one aut
 
 ## Product preview
 
-![Cookie King product preview](docs/chrome-store/assets/store-assets-v2/generated/store-screenshot-01-receiver.png)
+![Cookie King product preview](docs/github-assets/github-hero-en.png)
 
 > Use only on accounts and devices you are authorized to access.
 
