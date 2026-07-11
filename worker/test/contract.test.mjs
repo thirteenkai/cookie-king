@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import worker from '../src/index.js';
+import worker, { CookieKingCoordinator } from '../src/index.js';
 
 class MemoryKV {
   constructor() {
@@ -30,8 +30,47 @@ class MemoryKV {
   }
 }
 
+class MemoryDurableStorage {
+  constructor() {
+    this.store = new Map();
+  }
+
+  async get(key) {
+    return this.store.get(key);
+  }
+
+  async put(key, value) {
+    this.store.set(key, value);
+  }
+
+  async delete(key) {
+    this.store.delete(key);
+  }
+}
+
+class MemoryCoordinatorNamespace {
+  constructor(getEnv) {
+    this.getEnv = getEnv;
+    this.instances = new Map();
+  }
+
+  idFromName(name) {
+    return name;
+  }
+
+  get(id) {
+    if (!this.instances.has(id)) {
+      const state = { storage: new MemoryDurableStorage() };
+      this.instances.set(id, new CookieKingCoordinator(state, this.getEnv()));
+    }
+    return this.instances.get(id);
+  }
+}
+
 function createEnv() {
-  return { COOKIE_STORE: new MemoryKV() };
+  const env = { COOKIE_STORE: new MemoryKV() };
+  env.COORDINATOR = new MemoryCoordinatorNamespace(() => env);
+  return env;
 }
 
 function createEnvelope(siteId) {
@@ -104,6 +143,12 @@ async function createChannel(env, owner) {
 }
 
 async function run() {
+  {
+    const uncoordinatedEnv = { COOKIE_STORE: new MemoryKV() };
+    const rejected = await call(uncoordinatedEnv, '/api/v3/owners/bootstrap', 'POST');
+    assert.equal(rejected.status, 503);
+  }
+
   const env = createEnv();
 
   // health
@@ -113,6 +158,8 @@ async function run() {
     const payload = await readJson(res);
     assert.equal(payload.status, 'ok');
     assert.equal(payload.version, 'v3');
+    assert.equal(payload.maxSnapshotBytes, 20 * 1024 * 1024);
+    assert.equal(payload.channelSiteDiscovery, true);
   }
 
   const ownerA = await bootstrapOwner(env);
@@ -143,6 +190,71 @@ async function run() {
       readHeaders(channelA1)
     );
     assert.equal(get.status, 200);
+
+    const list = await call(
+      env,
+      `/api/v3/channels/${channelA1.channelId}/sites`,
+      'GET',
+      null,
+      null,
+      readHeaders(channelA1)
+    );
+    assert.equal(list.status, 200);
+    const listPayload = await readJson(list);
+    assert.deepEqual(listPayload.sites.map((item) => item.siteId), ['example.com']);
+
+    const forbiddenList = await call(
+      env,
+      `/api/v3/channels/${channelA1.channelId}/sites`,
+      'GET',
+      null,
+      null,
+      { 'X-CK-Read-Token': 'bad-token' }
+    );
+    assert.equal(forbiddenList.status, 403);
+  }
+
+  // Cookie+Storage snapshots commonly exceed the old 512 KiB ceiling.
+  {
+    const largeEnvelope = {
+      ...createEnvelope('large.example'),
+      ciphertext: 'A'.repeat(600 * 1024)
+    };
+    const put = await call(
+      env,
+      `/api/v3/channels/${channelA1.channelId}/sites/large.example`,
+      'PUT',
+      largeEnvelope,
+      null,
+      writeHeaders(ownerA, channelA1)
+    );
+    assert.equal(put.status, 200);
+    const remove = await call(
+      env,
+      `/api/v3/channels/${channelA1.channelId}/sites/large.example`,
+      'DELETE',
+      null,
+      null,
+      writeHeaders(ownerA, channelA1)
+    );
+    assert.equal(remove.status, 200);
+  }
+
+  {
+    const tooLarge = await call(
+      env,
+      `/api/v3/channels/${channelA1.channelId}/sites/oversize.example`,
+      'PUT',
+      createEnvelope('oversize.example'),
+      null,
+      {
+        ...writeHeaders(ownerA, channelA1),
+        'Content-Length': String(20 * 1024 * 1024 + 1)
+      }
+    );
+    assert.equal(tooLarge.status, 413);
+    const payload = await readJson(tooLarge);
+    assert.equal(payload.maxBytes, 20 * 1024 * 1024);
   }
 
   // same owner + same site: new channel overrides old channel
@@ -259,6 +371,25 @@ async function run() {
       { 'X-CK-Read-Token': 'bad-read-token' }
     );
     assert.equal(badRead.status, 403);
+
+    const queryTokenRead = await call(
+      env,
+      `/api/v3/channels/${channelA2.channelId}/sites/example.com?readToken=${channelA2.readToken}`,
+      'GET'
+    );
+    assert.equal(queryTokenRead.status, 403);
+
+    const hostileKdfEnvelope = createEnvelope('demo.com');
+    hostileKdfEnvelope.kdf.i = 1000000000;
+    const hostileKdf = await call(
+      env,
+      `/api/v3/channels/${channelA2.channelId}/sites/demo.com`,
+      'PUT',
+      hostileKdfEnvelope,
+      null,
+      writeHeaders(ownerA, channelA2)
+    );
+    assert.equal(hostileKdf.status, 400);
   }
 
   // owner hourly create quota: 30/day
@@ -273,6 +404,43 @@ async function run() {
     assert.ok(limited.headers.get('Retry-After'));
   }
 
+  // concurrent writes must retain every site in the coordinated index
+  {
+    const ownerD = await bootstrapOwner(env);
+    const channelD = await createChannel(env, ownerD);
+    const siteIds = ['a.example', 'b.example'];
+
+    const pushes = await Promise.all(siteIds.map((siteId) => call(
+      env,
+      `/api/v3/channels/${channelD.channelId}/sites/${siteId}`,
+      'PUT',
+      createEnvelope(siteId),
+      null,
+      writeHeaders(ownerD, channelD)
+    )));
+    assert.deepEqual(pushes.map((response) => response.status), [200, 200]);
+
+    const list = await call(env, '/api/v3/owners/sites', 'GET', null, null, ownerHeaders(ownerD));
+    const payload = await readJson(list);
+    assert.deepEqual(payload.sites.map((site) => site.siteId).sort(), siteIds);
+  }
+
+  // concurrent channel creation must still enforce the 30/day owner quota
+  {
+    const ownerE = await bootstrapOwner(env);
+    const creates = await Promise.all(Array.from({ length: 31 }, () => call(
+      env,
+      '/api/v3/channels',
+      'POST',
+      null,
+      null,
+      ownerHeaders(ownerE)
+    )));
+    const statuses = creates.map((response) => response.status);
+    assert.equal(statuses.filter((status) => status === 200).length, 30);
+    assert.equal(statuses.filter((status) => status === 429).length, 1);
+  }
+
   // clear owner active records
   {
     const clear = await call(env, '/api/v3/owners/sites', 'DELETE', null, null, ownerHeaders(ownerA));
@@ -281,6 +449,28 @@ async function run() {
     const listA = await call(env, '/api/v3/owners/sites', 'GET', null, null, ownerHeaders(ownerA));
     const payloadA = await readJson(listA);
     assert.equal(payloadA.sites.length, 0);
+  }
+
+  // existing KV metadata must migrate lazily when the coordinator is enabled
+  {
+    const legacyEnv = {
+      COOKIE_STORE: new MemoryKV(),
+      ALLOW_UNCOORDINATED_FOR_TESTS: true
+    };
+    const legacyOwner = await bootstrapOwner(legacyEnv);
+    const legacyChannel = await createChannel(legacyEnv, legacyOwner);
+
+    legacyEnv.COORDINATOR = new MemoryCoordinatorNamespace(() => legacyEnv);
+    delete legacyEnv.ALLOW_UNCOORDINATED_FOR_TESTS;
+    const authorized = await call(
+      legacyEnv,
+      `/api/v3/channels/${legacyChannel.channelId}/sites/legacy.example`,
+      'PUT',
+      createEnvelope('legacy.example'),
+      null,
+      writeHeaders(legacyOwner, legacyChannel)
+    );
+    assert.equal(authorized.status, 200);
   }
 
   console.log('Worker contract tests passed');

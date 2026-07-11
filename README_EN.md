@@ -23,19 +23,22 @@ Cookie King helps you move an already-authenticated website session from one aut
 ## How It Works
 
 1. Capture site Cookie from an authenticated page, with optional Storage.
-2. Encrypt snapshot locally in the browser.
+2. Encrypt the snapshot locally with an independent key contained in the `ck4` share code. The key is never sent to the backend.
 3. Upload encrypted snapshot to your Worker backend.
 4. Pull snapshot with a share code on another authorized device and restore.
 
-The backend stores ciphertext, not plaintext cookie values.
+The backend can see site identifiers, timestamps, channel identifiers, and API credentials. It cannot read Cookie/Storage values and never receives the `ck4` encryption key. Automatic verification outcomes and diagnostic history stay on the local device.
 
 ## Extension UI
 
-- The default screen is **Quick Login**. Paste your Worker server URL and a full `ck3` share code, then click **One-click login** on the target website.
+- The default screen is **Quick Login**. Paste your Worker server URL and a full `ck4` share code, then click **One-click login** on the target website. Legacy `ck3` codes are supported only for historical snapshots.
 - Click the Cookie King logo in the top-left corner to open **Management**.
 - In **Management > Push**, set your Worker server URL, click **Generate** to create a share code, choose the sync scope, then click **One-click push**.
 - In **Management > Pushed**, review pushed site records, copy a share code, delete a single site record, clear all cloud records for the current share code, or configure auto push.
-- In **Received**, review received site records and configure auto pull.
+- In **Login records**, review restored websites and configure auto pull. Related subdomains of the same website are grouped together.
+- After a restore, the extension compares pre/post login-page and session signals automatically. Observed success stays out of the way; observed failure immediately shows the reason and the next action.
+- Partial Cookie/Storage writes are rolled back automatically. If a site cannot be verified generically and there is no explicit failure evidence, the interface stays quiet.
+- For related login subdomains, parent-domain cookies restore directly. Host-only cookies are restored on the snapshot source host, and the background transaction navigates there to complete the login redirect. localStorage/sessionStorage never crosses origins.
 - The GitHub icon beside the server field opens this project page, including the backend deployment guide.
 - Hover or keyboard-focus icon buttons to see what each hidden action does.
 
@@ -50,25 +53,16 @@ Official Chrome Web Store listing: [Cookie King](https://chromewebstore.google.c
 
 ## Backend Deployment
 
-Choose one path:
+The backend now uses a Durable Object for consistent indexes and rate limits. Wrangler CLI deployment is the supported path; copying only the Worker source into the dashboard does not create the required migration.
+The sample Worker accepts encrypted snapshots up to 20 MiB. If `Payload too large` still appears, update and redeploy the Worker first.
 
-### Option A: Cloudflare Dashboard
-
-1. Create a Worker.
-2. Paste `worker/src/index.js` into the online editor.
-3. Create a KV namespace.
-4. Add Worker binding:
-   - Variable name: `COOKIE_STORE`
-   - Namespace: your KV namespace
-5. Deploy and verify `https://<your-worker>.<subdomain>.workers.dev/api/health`.
-
-### Option B: Local CLI
+### Wrangler CLI
 
 ```bash
 cd worker
 npm install
 npx wrangler login
-# set your KV namespace id in worker/wrangler.toml
+# set your KV namespace id in worker/wrangler.toml; the Durable Object is created from the config
 npm test
 npm run deploy
 ```
@@ -84,6 +78,7 @@ Only `V3` is publicly supported:
 - `POST /api/v3/channels`
 - `GET /api/v3/owners/sites`
 - `DELETE /api/v3/owners/sites`
+- `GET /api/v3/channels/:channelId/sites`
 - `GET | PUT | DELETE /api/v3/channels/:channelId/sites/:siteId`
 - `DELETE /api/v3/channels/:channelId`
 

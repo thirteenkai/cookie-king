@@ -16,7 +16,9 @@ const CORS_HEADERS = {
 };
 
 const TTL_SECONDS = 7 * 24 * 60 * 60;
-const MAX_SNAPSHOT_BYTES = 512 * 1024;
+// Keep headroom below Workers KV's 25 MiB value limit for metadata and JSON framing.
+const MAX_SNAPSHOT_BYTES = 20 * 1024 * 1024;
+const MAX_KDF_ITERATIONS = 1000000;
 
 const CHANNEL_ID_RE = /^[a-z0-9][a-z0-9-]{2,63}$/;
 const SITE_ID_RE = /^[a-z0-9][a-z0-9.-]{1,126}$/;
@@ -110,14 +112,16 @@ function generateToken(bytes = 24) {
   return bytesToBase64Url(crypto.getRandomValues(new Uint8Array(bytes)));
 }
 
-function formatShareCode(channelId, readToken) {
-  return `ck3.${channelId}.${readToken}`;
-}
-
 async function parseJsonBody(request, maxBytes = Infinity) {
   const contentLength = Number(request.headers.get('content-length') || 0);
   if (Number.isFinite(contentLength) && contentLength > maxBytes) {
-    return { ok: false, status: 413, error: 'Payload too large' };
+    return {
+      ok: false,
+      status: 413,
+      error: 'Payload too large',
+      maxBytes,
+      receivedBytes: contentLength
+    };
   }
 
   let text;
@@ -127,8 +131,15 @@ async function parseJsonBody(request, maxBytes = Infinity) {
     return { ok: false, status: 400, error: 'Invalid request body' };
   }
 
-  if ((text || '').length > maxBytes) {
-    return { ok: false, status: 413, error: 'Payload too large' };
+  const receivedBytes = new TextEncoder().encode(text || '').byteLength;
+  if (receivedBytes > maxBytes) {
+    return {
+      ok: false,
+      status: 413,
+      error: 'Payload too large',
+      maxBytes,
+      receivedBytes
+    };
   }
 
   if (!text) return { ok: false, status: 400, error: 'Invalid JSON body' };
@@ -262,8 +273,10 @@ async function compactV3ChannelIndex(env, channelId, indexData) {
 
   const result = {};
   for (const [siteId, meta] of entries) {
-    const exists = await env.COOKIE_STORE.get(v3ChannelSiteKey(channelId, siteId));
-    if (exists !== null) result[siteId] = meta;
+    const updatedAtMs = Date.parse(meta?.updatedAt || '');
+    if (Number.isFinite(updatedAtMs) && updatedAtMs > Date.now() - TTL_SECONDS * 1000) {
+      result[siteId] = meta;
+    }
   }
 
   if (Object.keys(result).length !== entries.length) {
@@ -294,8 +307,10 @@ async function compactV3OwnerActiveIndex(env, ownerId, indexData) {
     const channelMeta = await readV3ChannelMeta(env, channelId);
     if (!channelMeta || channelMeta.ownerId !== ownerId) continue;
 
-    const exists = await env.COOKIE_STORE.get(v3ChannelSiteKey(channelId, siteId));
-    if (exists !== null) result[siteId] = meta;
+    const updatedAtMs = Date.parse(meta?.updatedAt || '');
+    if (Number.isFinite(updatedAtMs) && updatedAtMs > Date.now() - TTL_SECONDS * 1000) {
+      result[siteId] = meta;
+    }
   }
 
   if (Object.keys(result).length !== entries.length) {
@@ -333,11 +348,7 @@ async function requireReadAccess(request, env, channelId) {
   const channelMeta = await readV3ChannelMeta(env, channelId);
   if (!channelMeta) return { error: error(404, 'Channel not found') };
 
-  const readToken = (
-    request.headers.get('X-CK-Read-Token')
-    || new URL(request.url).searchParams.get('readToken')
-    || ''
-  ).trim();
+  const readToken = (request.headers.get('X-CK-Read-Token') || '').trim();
 
   if (!isValidToken(readToken) || readToken !== channelMeta.readToken) {
     return { error: error(403, 'Invalid read token') };
@@ -349,7 +360,12 @@ async function requireReadAccess(request, env, channelId) {
 async function parseAndValidateEnvelope(request, siteId) {
   const parsed = await parseJsonBody(request, MAX_SNAPSHOT_BYTES);
   if (!parsed.ok) {
-    return { error: error(parsed.status, parsed.error) };
+    return {
+      error: error(parsed.status, parsed.error, {
+        maxBytes: parsed.maxBytes || undefined,
+        receivedBytes: parsed.receivedBytes || undefined
+      })
+    };
   }
 
   const validationError = validateEnvelope(parsed.value, siteId);
@@ -381,12 +397,14 @@ function validateEnvelope(payload, pathSiteId) {
 
   const { envelopeVersion, alg, kdf, iv, ciphertext, metadata } = payload;
 
-  if (!envelopeVersion) return 'Missing envelopeVersion';
+  if (!['2', '3'].includes(String(envelopeVersion || ''))) return 'Unsupported envelopeVersion';
   if (alg !== 'AES-GCM') return 'alg must be AES-GCM';
 
   if (!kdf || typeof kdf !== 'object') return 'Missing kdf';
   if (typeof kdf.s !== 'string' || !kdf.s) return 'kdf.s must be base64 string';
-  if (!Number.isInteger(kdf.i) || kdf.i < 100000) return 'kdf.i must be integer >= 100000';
+  if (!Number.isInteger(kdf.i) || kdf.i < 100000 || kdf.i > MAX_KDF_ITERATIONS) {
+    return 'kdf.i must be integer between 100000 and 1000000';
+  }
   if (kdf.h !== 'SHA-256') return 'kdf.h must be SHA-256';
 
   if (typeof iv !== 'string' || !iv) return 'Missing iv';
@@ -404,8 +422,7 @@ function validateEnvelope(payload, pathSiteId) {
 // Main handler
 // ----------------------
 
-export default {
-  async fetch(request, env) {
+async function handleRequest(request, env) {
     const url = new URL(request.url);
     const path = url.pathname;
 
@@ -414,7 +431,13 @@ export default {
     }
 
     if (path === '/api/health' && request.method === 'GET') {
-      return json({ status: 'ok', time: new Date().toISOString(), version: 'v3' });
+      return json({
+        status: 'ok',
+        time: new Date().toISOString(),
+        version: 'v3',
+        maxSnapshotBytes: MAX_SNAPSHOT_BYTES,
+        channelSiteDiscovery: true
+      });
     }
 
     // -------- V3 --------
@@ -494,7 +517,6 @@ export default {
         channelId,
         readToken,
         writeToken,
-        shareCode: formatShareCode(channelId, readToken),
         createdAt: now
       });
     }
@@ -562,6 +584,36 @@ export default {
       });
 
       return json({ success: true, ownerId: auth.ownerId, deletedSiteCount });
+    }
+
+    const v3ChannelSitesMatch = path.match(/^\/api\/v3\/channels\/([a-z0-9-]+)\/sites$/);
+    if (v3ChannelSitesMatch && request.method === 'GET') {
+      const channelId = v3ChannelSitesMatch[1];
+      if (!isValidChannelId(channelId)) return error(400, 'Invalid channelId');
+
+      const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+      const ipRate = await enforceRateLimit(env, 'pull-ip', ip, RATE_LIMITS.pullByIpPerHour);
+      if (ipRate?.limited) return rateLimitedResponse(ipRate);
+
+      const channelRate = await enforceRateLimit(env, 'pull-channel', channelId, RATE_LIMITS.pullByChannelPerHour);
+      if (channelRate?.limited) return rateLimitedResponse(channelRate);
+
+      const read = await requireReadAccess(request, env, channelId);
+      if (read.error) return read.error;
+
+      const rawIndex = await readV3ChannelIndex(env, channelId);
+      const active = await compactV3ChannelIndex(env, channelId, rawIndex);
+      const sites = Object.entries(active)
+        .map(([siteId, meta]) => ({ siteId, updatedAt: meta?.updatedAt || null }))
+        .sort(sortByUpdatedAtDesc);
+
+      logEvent('channel.sites.list', {
+        status: 'ok',
+        channelId,
+        count: sites.length
+      });
+
+      return json({ channelId, sites });
     }
 
     const v3SiteMatch = path.match(/^\/api\/v3\/channels\/([a-z0-9-]+)\/sites\/([a-z0-9.-]+)$/);
@@ -701,8 +753,7 @@ export default {
           riskLevel: channelIndex[siteId].riskLevel,
           strategy: channelIndex[siteId].strategy,
           supportLevel: channelIndex[siteId].supportLevel,
-          overwrittenFromChannelId: overwrittenFromChannelId || null,
-          shareCode: formatShareCode(channelId, write.channelMeta.readToken)
+          overwrittenFromChannelId: overwrittenFromChannelId || null
         });
       }
 
@@ -788,5 +839,121 @@ export default {
     }
 
     return error(404, 'Not found');
+}
+
+function isSnapshotPayloadKey(key) {
+  return /^v3:channels:[^:]+:sites:[^:]+$/.test(String(key || ''));
+}
+
+class CoordinatedMetadataStore {
+  constructor(storage, snapshotStore) {
+    this.storage = storage;
+    this.snapshotStore = snapshotStore;
+  }
+
+  async get(key, type) {
+    if (isSnapshotPayloadKey(key)) {
+      return this.snapshotStore.get(key, type);
+    }
+
+    let record = await this.storage.get(key);
+    if (record === undefined || record === null) {
+      const legacyValue = await this.snapshotStore.get(key);
+      if (legacyValue === null || legacyValue === undefined) return null;
+      record = { value: String(legacyValue), expiresAt: 0 };
+      await this.storage.put(key, record);
+    }
+
+    const normalizedRecord = record && typeof record === 'object' && 'value' in record
+      ? record
+      : { value: String(record), expiresAt: 0 };
+    const expiresAt = Number(normalizedRecord.expiresAt || 0);
+    if (expiresAt > 0 && expiresAt <= Date.now()) {
+      await this.storage.delete(key);
+      return null;
+    }
+
+    const raw = String(normalizedRecord.value ?? '');
+    if (type === 'json') {
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return null;
+      }
+    }
+    return raw;
+  }
+
+  async put(key, value, options = {}) {
+    if (isSnapshotPayloadKey(key)) {
+      return this.snapshotStore.put(key, value, options);
+    }
+
+    const ttlSeconds = Number(options?.expirationTtl || 0);
+    const expiresAt = ttlSeconds > 0 ? Date.now() + ttlSeconds * 1000 : 0;
+    await this.storage.put(key, {
+      value: String(value),
+      expiresAt
+    });
+  }
+
+  async delete(key) {
+    if (isSnapshotPayloadKey(key)) {
+      return this.snapshotStore.delete(key);
+    }
+
+    await Promise.all([
+      this.storage.delete(key),
+      this.snapshotStore.delete(key)
+    ]);
+  }
+}
+
+export class CookieKingCoordinator {
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+    this.queue = Promise.resolve();
+  }
+
+  fetch(request) {
+    const task = this.queue.then(() => {
+      const coordinatedEnv = {
+        ...this.env,
+        COOKIE_STORE: new CoordinatedMetadataStore(this.state.storage, this.env.COOKIE_STORE)
+      };
+      return handleRequest(request, coordinatedEnv);
+    });
+
+    this.queue = task.then(() => undefined, () => undefined);
+    return task;
+  }
+}
+
+let fallbackQueue = Promise.resolve();
+
+function handleWithFallbackQueue(request, env) {
+  const task = fallbackQueue.then(() => handleRequest(request, env));
+  fallbackQueue = task.then(() => undefined, () => undefined);
+  return task;
+}
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    if (!url.pathname.startsWith('/api/v3/')) {
+      return handleRequest(request, env);
+    }
+
+    if (!env.COORDINATOR) {
+      if (env.ALLOW_UNCOORDINATED_FOR_TESTS === true) {
+        return handleWithFallbackQueue(request, env);
+      }
+      return error(503, 'COORDINATOR binding is required');
+    }
+
+    const id = env.COORDINATOR.idFromName('cookie-king-global-v1');
+    const stub = env.COORDINATOR.get(id);
+    return stub.fetch(request);
   }
 };

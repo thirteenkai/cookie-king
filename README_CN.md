@@ -29,18 +29,21 @@
 ## 它怎么工作
 
 1. 在已登录页面采集当前站点的 Cookie，并按同步范围决定是否采集 Storage。
-2. 在浏览器本地完成加密，再上传到你自己的 Worker 后端。
+2. 在浏览器本地使用 `ck4` 共享码中的独立密钥完成加密，再上传到你自己的 Worker 后端；该密钥不会发送给后端。
 3. 另一端通过共享码拉取密文快照并恢复登录状态。
 
-云端看到的是密文，不是明文 Cookie。
+云端可以看到站点标识、时间戳、频道标识和访问凭证，但看不到 Cookie/Storage 明文，也无法取得 `ck4` 中仅由两端持有的加密密钥。自动验证结果与诊断历史仅保存在本机。
 
 ## 插件交互说明
 
-- 默认打开的是 **快速登录** 页。在目标网站页面填写 Worker 服务器地址和完整 `ck3` 共享码，然后点击 **一键登录**。
+- 默认打开的是 **快速登录** 页。在目标网站页面填写 Worker 服务器地址和完整 `ck4` 共享码，然后点击 **一键登录**；旧 `ck3` 仅用于读取历史快照。
 - 点击左上角 Cookie King Logo 可进入 **Management / 管理端**。
 - 在 **Management > Push / 推送设置** 中填写 Worker 服务器地址，点击 **随机生成** 创建共享码，选择同步范围后点击 **一键推送**。
 - 在 **Management > Pushed / 推送记录** 中可以查看已推送站点、复制共享码、删除单站点云端记录、清空当前共享码全部云端记录，或设置自动推送。
-- 在 **Received / 接收记录** 中可以查看已接收站点，并设置自动拉取。
+- 在 **登录记录** 中可以查看已登录网站，并设置自动拉取；同一网站的相关子域合并显示。
+- 接收后会自动对比恢复前后的登录页面与会话信号：检测到登录成功时不打扰，检测到失败时直接展示原因和建议。
+- Cookie/Storage 部分写入失败会自动回滚；站点无法通用验证且没有明确失败证据时，界面保持安静。
+- 登录页位于相关子域时，父域 Cookie 可直接恢复；host-only Cookie 会写回快照源站，并由后台导航到源站完成登录跳转。localStorage/sessionStorage 不跨 Origin 写入。
 - 服务器字段旁边的 GitHub 图标会打开项目主页，项目主页内包含后端部署说明。
 - 鼠标悬停或键盘聚焦图标按钮时，会显示该按钮的作用提示。
 
@@ -55,25 +58,16 @@ Chrome 应用商店正式地址：[Cookie King](https://chromewebstore.google.co
 
 ## 后端部署
 
-你可以任选一种方式部署自己的后端：
+当前后端使用 Durable Object 保证索引和限流的一致性，因此正式支持 Wrangler CLI 部署；只复制 Worker 源码到网页编辑器不会创建所需迁移。
+示例 Worker 支持最大 20 MiB 的加密快照；如仍收到 `Payload too large`，请先更新并重新部署 Worker。
 
-### 方式 A：Cloudflare 网页部署
-
-1. 在 Cloudflare 创建 Worker。
-2. 把 `worker/src/index.js` 的内容粘贴到在线编辑器。
-3. 创建一个 KV 命名空间。
-4. 在 Worker Bindings 中添加：
-   - Variable name：`COOKIE_STORE`
-   - Namespace：选择你自己的 KV
-5. 部署后访问 `https://<your-worker>.<subdomain>.workers.dev/api/health` 验证。
-
-### 方式 B：本地 CLI 部署
+### Wrangler CLI 部署
 
 ```bash
 cd worker
 npm install
 npx wrangler login
-# 在 worker/wrangler.toml 填入你自己的 KV id
+# 在 worker/wrangler.toml 填入你自己的 KV id；Durable Object 由配置自动创建
 npm test
 npm run deploy
 ```
@@ -96,6 +90,7 @@ npm run deploy
 - `POST /api/v3/channels`
 - `GET /api/v3/owners/sites`
 - `DELETE /api/v3/owners/sites`
+- `GET /api/v3/channels/:channelId/sites`
 - `GET | PUT | DELETE /api/v3/channels/:channelId/sites/:siteId`
 - `DELETE /api/v3/channels/:channelId`
 

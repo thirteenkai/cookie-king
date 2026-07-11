@@ -2,6 +2,14 @@ name = "cookie-king"
 main = "src/index.js"
 compatibility_date = "2024-01-01"
 
+[[durable_objects.bindings]]
+name = "COORDINATOR"
+class_name = "CookieKingCoordinator"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["CookieKingCoordinator"]
+
 [[kv_namespaces]]
 binding = "COOKIE_STORE"
 id = "YOUR_KV_NAMESPACE_ID"
